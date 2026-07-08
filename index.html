@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="长沙雨花 2B 仓城配分单、司机交接和配送回传工具"
+    />
+    <title>长沙雨花城配分单台</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-route" viewBox="0 0 24 24">
+        <path d="M6 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+        <path d="M8.5 16h4.2c2.9 0 4.3-1.4 4.3-3.7V11" />
+        <path d="M15.5 8H11c-2.6 0-4 1.2-4 3.6V13" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="i-print" viewBox="0 0 24 24">
+        <path d="M7 8V4h10v4" />
+        <path d="M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+        <path d="M7 14h10v6H7z" />
+      </symbol>
+      <symbol id="i-link" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.2 1.2" />
+        <path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.2-1.2" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 1 0 3-6.7" />
+        <path d="M3 4v6h6" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m16 16 5 5" />
+      </symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" />
+        <path d="M11 18h2" />
+      </symbol>
+      <symbol id="i-nav" viewBox="0 0 24 24">
+        <path d="m4 13 16-9-7 16-2-7-7-2Z" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12 5 5L20 7" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="M12 3 2 20h20L12 3Z" />
+        <path d="M12 9v5M12 17h.01" />
+      </symbol>
+      <symbol id="i-box" viewBox="0 0 24 24">
+        <path d="m3 7 9-4 9 4-9 4-9-4Z" />
+        <path d="M3 7v10l9 4 9-4V7" />
+        <path d="M12 11v10" />
+      </symbol>
+    </svg>
+
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">雨</div>
+          <div>
+            <h1>长沙雨花城配分单台</h1>
+            <p>2B仓 / 多货主 / 无面单承运</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="ghost" id="resetBtn" type="button" title="重置演示数据">
+            <svg><use href="#i-reset"></use></svg>
+            <span>重置</span>
+          </button>
+          <button class="secondary" id="exportBtn" type="button" title="导出交接CSV">
+            <svg><use href="#i-download"></use></svg>
+            <span>导出</span>
+          </button>
+          <button class="primary" id="dispatchBtn" type="button" title="智能分单">
+            <svg><use href="#i-route"></use></svg>
+            <span>智能分单</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="left-rail">
+          <section class="panel">
+            <div class="panel-title">
+              <span>筛选</span>
+              <button class="icon-btn" id="clearFiltersBtn" type="button" title="清空筛选">
+                <svg><use href="#i-reset"></use></svg>
+              </button>
+            </div>
+            <label class="searchbox">
+              <svg><use href="#i-search"></use></svg>
+              <input id="searchInput" type="search" placeholder="运单号 / 货主 / 地址" />
+            </label>
+            <label>
+              <span>货主</span>
+              <select id="ownerFilter"></select>
+            </label>
+            <label>
+              <span>温层</span>
+              <select id="tempFilter"></select>
+            </label>
+            <label>
+              <span>状态</span>
+              <select id="statusFilter"></select>
+            </label>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <span>分单策略</span>
+              <button class="icon-btn" id="addOrderBtn" type="button" title="新增运单">
+                <svg><use href="#i-plus"></use></svg>
+              </button>
+            </div>
+            <div class="segmented" role="group" aria-label="货主策略">
+              <button class="active" data-owner-policy="merge" type="button">合并货主</button>
+              <button data-owner-policy="split" type="button">按货主拆</button>
+            </div>
+            <label>
+              <span>单车最大票数</span>
+              <input id="maxStopsInput" type="number" min="3" max="20" value="8" />
+            </label>
+            <label>
+              <span>单车载重上限(kg)</span>
+              <input id="capacityInput" type="number" min="100" step="50" value="650" />
+            </label>
+            <label class="check-row">
+              <input id="keepTempCheck" type="checkbox" checked />
+              <span>温层不混装</span>
+            </label>
+            <label class="check-row">
+              <input id="priorityCheck" type="checkbox" checked />
+              <span>优先时效前置</span>
+            </label>
+          </section>
+
+          <section class="panel dense">
+            <div class="panel-title">
+              <span>字段扩展</span>
+              <button class="icon-btn" id="addFieldBtn" type="button" title="新增字段">
+                <svg><use href="#i-plus"></use></svg>
+              </button>
+            </div>
+            <div id="customFieldList" class="field-list"></div>
+          </section>
+        </aside>
+
+        <section class="main-panel">
+          <section class="kpis" id="kpiRow"></section>
+
+          <section class="route-map-shell">
+            <div class="section-head">
+              <div>
+                <h2>雨花末端路由</h2>
+                <p id="routeMapSub">待分单运单将按片区、温层、载重和时效生成路线</p>
+              </div>
+              <div class="map-legend" id="mapLegend"></div>
+            </div>
+            <svg id="routeMap" class="route-map" viewBox="0 0 760 310" role="img" aria-label="路线示意图"></svg>
+          </section>
+
+          <section class="table-shell">
+            <div class="section-head compact">
+              <div>
+                <h2>运单池</h2>
+                <p id="orderCountText"></p>
+              </div>
+              <button class="secondary" id="bulkDispatchBtn" type="button" title="分配当前筛选运单">
+                <svg><use href="#i-route"></use></svg>
+                <span>分配筛选</span>
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>运单</th>
+                    <th>货主</th>
+                    <th>收件人</th>
+                    <th>地址</th>
+                    <th>温层</th>
+                    <th>重量</th>
+                    <th>件数</th>
+                    <th>路线</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="orderTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <aside class="right-rail">
+          <section class="panel route-panel">
+            <div class="panel-title">
+              <span>司机路线</span>
+              <button class="icon-btn" id="printBtn" type="button" title="打印当前路线">
+                <svg><use href="#i-print"></use></svg>
+              </button>
+            </div>
+            <div id="routeList" class="route-list"></div>
+          </section>
+
+          <section class="panel handoff-panel">
+            <div class="panel-title">
+              <span>司机交付包</span>
+              <button class="icon-btn" id="copyDriverLinkBtn" type="button" title="复制司机H5链接">
+                <svg><use href="#i-link"></use></svg>
+              </button>
+            </div>
+            <div id="driverPack" class="driver-pack"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <dialog id="orderDialog">
+      <form method="dialog" id="orderForm" class="dialog-body">
+        <div class="dialog-head">
+          <h2>新增运单</h2>
+          <button class="icon-btn" value="cancel" type="submit" title="关闭">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div class="form-grid">
+          <label><span>仓库</span><input name="warehouse" value="长沙雨花2B仓" required /></label>
+          <label><span>货主</span><input name="owner" required /></label>
+          <label><span>收件人</span><input name="recipient" required /></label>
+          <label><span>电话</span><input name="phone" required /></label>
+          <label class="span-2"><span>收件地址</span><input name="address" required /></label>
+          <label><span>片区</span><select name="area" id="areaSelect"></select></label>
+          <label><span>温层</span><select name="temperature" id="temperatureSelect"></select></label>
+          <label><span>重量(kg)</span><input name="weight" type="number" min="0.1" step="0.1" required /></label>
+          <label><span>物品类型</span><input name="goodsType" required /></label>
+          <label><span>件数</span><input name="pieces" type="number" min="1" required /></label>
+          <label><span>时效窗</span><input name="timeWindow" value="今日 14:00-18:00" /></label>
+          <label><span>卸货点</span><input name="dropPoint" value="门店后仓" /></label>
+        </div>
+        <div class="dialog-actions">
+          <button class="ghost" value="cancel" type="submit">取消</button>
+          <button class="primary" value="default" type="submit">
+            <svg><use href="#i-plus"></use></svg>
+            <span>加入运单池</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="fieldDialog">
+      <form method="dialog" id="fieldForm" class="dialog-body small-dialog">
+        <div class="dialog-head">
+          <h2>新增扩展字段</h2>
+          <button class="icon-btn" value="cancel" type="submit" title="关闭">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <label><span>字段名</span><input name="fieldName" required placeholder="如：回单要求" /></label>
+        <label><span>默认值</span><input name="fieldValue" placeholder="如：需拍照" /></label>
+        <div class="dialog-actions">
+          <button class="ghost" value="cancel" type="submit">取消</button>
+          <button class="primary" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="printArea" aria-hidden="true"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module">
+      // 确保只在浏览器环境加载
+      if (typeof window !== 'undefined') {
+        import('./app.js');
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "yuhua-city-delivery-dispatch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node scripts/prepare-dist.mjs",
+    "start": "node server.mjs"
+  }
+}
