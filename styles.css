@@ -399,7 +399,7 @@ select:focus {
 .map-label {
   fill: #2a3632;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.02em;
 }
 
@@ -731,6 +731,11 @@ dialog::backdrop {
 #toast.show {
   opacity: 1;
   transform: translateY(0);
+}
+
+#toast.error {
+  background: var(--red);
+  color: #fff;
 }
 
 .driver-view {

@@ -220,6 +220,8 @@ function init() {
   $("dispatchBtn").addEventListener("click", () => autoDispatch());
   $("bulkDispatchBtn").addEventListener("click", () => autoDispatch(filteredOrders()));
   $("exportBtn").addEventListener("click", exportCsv);
+  $("importBtn").addEventListener("click", () => $("csvFileInput").click());
+  $("csvFileInput").addEventListener("change", handleImportCsv);
   $("resetBtn").addEventListener("click", resetDemo);
   $("clearFiltersBtn").addEventListener("click", clearFilters);
   $("addOrderBtn").addEventListener("click", () => els.orderDialog.showModal());
@@ -737,7 +739,7 @@ function resetDemo() {
 }
 
 function exportCsv() {
-  const headers = ["运单号", "仓库", "货主", "收件人", "电话", "地址", "温层", "重量", "物品类型", "件数", "路线", "序号", "状态", "时效窗", "卸货点"];
+  const headers = ["运单号", "仓库", "货主", "收件人", "电话", "地址", "片区", "温层", "重量", "物品类型", "件数", "路线", "序号", "状态", "时效窗", "卸货点"];
   const rows = state.orders.map((item) => [
     item.id,
     item.warehouse,
@@ -745,6 +747,7 @@ function exportCsv() {
     item.recipient,
     item.phone,
     item.address,
+    item.area,
     item.temperature,
     item.weight,
     item.goodsType,
@@ -762,6 +765,117 @@ function exportCsv() {
   link.download = `雨花城配交接单-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function handleImportCsv(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(line => line.trim());
+
+      if (lines.length < 2) {
+        showToast("CSV 文件格式错误：没有数据行", "error");
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const importedOrders = [];
+      let errorCount = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length < 11) continue;
+
+        const orderData = {
+          id: values[0] || `YH${Date.now()}${i}`,
+          warehouse: values[1] || "长沙雨花2B仓",
+          owner: values[2] || "未知货主",
+          recipient: values[3] || "收件人",
+          phone: values[4] || "",
+          address: values[5] || "",
+          area: values[6] || Object.keys(areas)[0],
+          temperature: values[7] || "常温",
+          weight: parseFloat(values[8]) || 0,
+          goodsType: values[9] || "其他",
+          pieces: parseInt(values[10]) || 1,
+          timeWindow: values[14] || "今日配送",
+          dropPoint: values[15] || "门店",
+          priority: "标准",
+          status: "pending",
+          routeId: null,
+          sequence: null
+        };
+
+        // 验证必填字段
+        if (!orderData.recipient || !orderData.address || !orderData.area) {
+          errorCount++;
+          continue;
+        }
+
+        // 验证片区
+        if (!areas[orderData.area]) {
+          errorCount++;
+          continue;
+        }
+
+        // 验证温层
+        if (!tempOptions.includes(orderData.temperature)) {
+          orderData.temperature = "常温";
+        }
+
+        importedOrders.push(orderData);
+      }
+
+      if (importedOrders.length === 0) {
+        showToast("没有导入任何运单，请检查 CSV 格式", "error");
+        return;
+      }
+
+      // 添加到运单池
+      state.orders.push(...importedOrders);
+      saveState();
+      render();
+
+      const message = errorCount > 0
+        ? `成功导入 ${importedOrders.length} 条运单，跳过 ${errorCount} 条无效数据`
+        : `成功导入 ${importedOrders.length} 条运单`;
+      showToast(message);
+
+    } catch (error) {
+      console.error("CSV 导入错误:", error);
+      showToast("CSV 文件解析失败，请检查格式", "error");
+    }
+
+    // 清空文件输入
+    event.target.value = '';
+  };
+
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+
+  return result.map(v => v.replace(/^"|"$/g, ''));
 }
 
 function printSelectedRoute() {
@@ -1019,10 +1133,10 @@ async function copyText(text, message) {
   }
 }
 
-function showToast(message) {
+function showToast(message, type = "success") {
   els.toast = els.toast || $("toast");
   els.toast.textContent = message;
-  els.toast.classList.add("show");
+  els.toast.className = type === "error" ? "show error" : "show";
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 2200);
 }
