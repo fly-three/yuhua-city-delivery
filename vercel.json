@@ -1,5 +1,6 @@
 {
-  "github": {
-    "silent": true
-  }
+  "version": 2,
+  "installCommand": "echo 'No dependencies to install'",
+  "buildCommand": "echo 'No build needed'",
+  "outputDirectory": "."
 }
