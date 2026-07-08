@@ -289,13 +289,6 @@
     <div id="toast" role="status" aria-live="polite"></div>
     <input type="file" id="csvFileInput" accept=".csv,.xlsx,.xls,.pdf" style="display: none;" />
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script>
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-      }
-    </script>
     <script src="./main.js"></script>
   </body>
 </html>
