@@ -397,9 +397,10 @@ select:focus {
 }
 
 .map-label {
-  fill: #53605a;
-  font-size: 12px;
-  font-weight: 700;
+  fill: #2a3632;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .map-area {
