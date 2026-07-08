@@ -771,6 +771,24 @@ function handleImportCsv(event) {
   const file = event.target.files[0];
   if (!file) return;
 
+  const fileName = file.name.toLowerCase();
+
+  // 根据文件扩展名选择处理方式
+  if (fileName.endsWith('.csv')) {
+    importCSV(file);
+  } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    importExcel(file);
+  } else if (fileName.endsWith('.pdf')) {
+    importPDF(file);
+  } else {
+    showToast("不支持的文件格式，请使用 CSV、Excel 或 PDF 文件", "error");
+  }
+
+  // 清空文件输入
+  event.target.value = '';
+}
+
+function importCSV(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -783,78 +801,201 @@ function handleImportCsv(event) {
       }
 
       const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-      const importedOrders = [];
-      let errorCount = 0;
+      const rows = [];
 
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
-        if (values.length < 11) continue;
-
-        const orderData = {
-          id: values[0] || `YH${Date.now()}${i}`,
-          warehouse: values[1] || "长沙雨花2B仓",
-          owner: values[2] || "未知货主",
-          recipient: values[3] || "收件人",
-          phone: values[4] || "",
-          address: values[5] || "",
-          area: values[6] || Object.keys(areas)[0],
-          temperature: values[7] || "常温",
-          weight: parseFloat(values[8]) || 0,
-          goodsType: values[9] || "其他",
-          pieces: parseInt(values[10]) || 1,
-          timeWindow: values[14] || "今日配送",
-          dropPoint: values[15] || "门店",
-          priority: "标准",
-          status: "pending",
-          routeId: null,
-          sequence: null
-        };
-
-        // 验证必填字段
-        if (!orderData.recipient || !orderData.address || !orderData.area) {
-          errorCount++;
-          continue;
-        }
-
-        // 验证片区
-        if (!areas[orderData.area]) {
-          errorCount++;
-          continue;
-        }
-
-        // 验证温层
-        if (!tempOptions.includes(orderData.temperature)) {
-          orderData.temperature = "常温";
-        }
-
-        importedOrders.push(orderData);
+        rows.push(values);
       }
 
-      if (importedOrders.length === 0) {
-        showToast("没有导入任何运单，请检查 CSV 格式", "error");
-        return;
-      }
-
-      // 添加到运单池
-      state.orders.push(...importedOrders);
-      saveState();
-      render();
-
-      const message = errorCount > 0
-        ? `成功导入 ${importedOrders.length} 条运单，跳过 ${errorCount} 条无效数据`
-        : `成功导入 ${importedOrders.length} 条运单`;
-      showToast(message);
-
+      processImportedData(rows, headers, 'CSV');
     } catch (error) {
       console.error("CSV 导入错误:", error);
       showToast("CSV 文件解析失败，请检查格式", "error");
     }
-
-    // 清空文件输入
-    event.target.value = '';
   };
-
   reader.readAsText(file, 'UTF-8');
+}
+
+function importExcel(file) {
+  if (typeof XLSX === 'undefined') {
+    showToast("Excel 解析库加载失败，请刷新页面重试", "error");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      // 读取第一个工作表
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      // 转换为数组
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (jsonData.length < 2) {
+        showToast("Excel 文件格式错误：没有数据行", "error");
+        return;
+      }
+
+      const headers = jsonData[0].map(h => String(h || '').trim());
+      const rows = jsonData.slice(1);
+
+      processImportedData(rows, headers, 'Excel');
+    } catch (error) {
+      console.error("Excel 导入错误:", error);
+      showToast("Excel 文件解析失败，请检查格式", "error");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function importPDF(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    showToast("PDF 解析库加载失败，请刷新页面重试", "error");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const typedarray = new Uint8Array(e.target.result);
+      const pdf = await pdfjsLib.getDocument(typedarray).promise;
+
+      let fullText = '';
+
+      // 读取所有页面的文本
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+
+      // 尝试解析文本为表格数据
+      const lines = fullText.split('\n').filter(line => line.trim());
+
+      if (lines.length < 2) {
+        showToast("PDF 文件中未找到有效的表格数据", "error");
+        return;
+      }
+
+      // 简单的表格识别：假设每行用空格或制表符分隔
+      const rows = lines.map(line => {
+        // 尝试多种分隔符
+        return line.split(/\s{2,}|\t/).map(cell => cell.trim());
+      }).filter(row => row.length > 5);
+
+      if (rows.length < 2) {
+        showToast("PDF 文件格式无法识别，建议使用 CSV 或 Excel 格式", "error");
+        return;
+      }
+
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+
+      processImportedData(dataRows, headers, 'PDF');
+    } catch (error) {
+      console.error("PDF 导入错误:", error);
+      showToast("PDF 文件解析失败，建议使用 CSV 或 Excel 格式", "error");
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function processImportedData(rows, headers, fileType) {
+  const importedOrders = [];
+  let errorCount = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const values = rows[i].map(v => String(v || '').trim());
+
+    if (values.length < 6) {
+      errorCount++;
+      continue;
+    }
+
+    // 智能字段映射
+    const orderData = mapRowToOrder(values, headers);
+
+    // 验证必填字段
+    if (!orderData.recipient || !orderData.address || !orderData.area) {
+      errorCount++;
+      continue;
+    }
+
+    // 验证片区
+    if (!areas[orderData.area]) {
+      errorCount++;
+      continue;
+    }
+
+    // 验证温层
+    if (!tempOptions.includes(orderData.temperature)) {
+      orderData.temperature = "常温";
+    }
+
+    importedOrders.push(orderData);
+  }
+
+  if (importedOrders.length === 0) {
+    showToast(`没有导入任何运单，请检查 ${fileType} 格式`, "error");
+    return;
+  }
+
+  // 添加到运单池
+  state.orders.push(...importedOrders);
+  saveState();
+  render();
+
+  const message = errorCount > 0
+    ? `成功从 ${fileType} 导入 ${importedOrders.length} 条运单，跳过 ${errorCount} 条无效数据`
+    : `成功从 ${fileType} 导入 ${importedOrders.length} 条运单`;
+  showToast(message);
+}
+
+function mapRowToOrder(values, headers) {
+  // 根据表头智能映射字段
+  const headerMap = {};
+  headers.forEach((header, index) => {
+    const h = header.toLowerCase();
+    if (h.includes('运单') || h.includes('单号') || h.includes('id')) headerMap.id = index;
+    else if (h.includes('仓库') || h.includes('warehouse')) headerMap.warehouse = index;
+    else if (h.includes('货主') || h.includes('owner')) headerMap.owner = index;
+    else if (h.includes('收件人') || h.includes('recipient') || h.includes('联系人')) headerMap.recipient = index;
+    else if (h.includes('电话') || h.includes('手机') || h.includes('phone')) headerMap.phone = index;
+    else if (h.includes('地址') || h.includes('address')) headerMap.address = index;
+    else if (h.includes('片区') || h.includes('区域') || h.includes('area')) headerMap.area = index;
+    else if (h.includes('温层') || h.includes('温度') || h.includes('temp')) headerMap.temperature = index;
+    else if (h.includes('重量') || h.includes('weight')) headerMap.weight = index;
+    else if (h.includes('物品') || h.includes('商品') || h.includes('goods')) headerMap.goodsType = index;
+    else if (h.includes('件数') || h.includes('数量') || h.includes('pieces')) headerMap.pieces = index;
+    else if (h.includes('时效') || h.includes('时间窗') || h.includes('time')) headerMap.timeWindow = index;
+    else if (h.includes('卸货') || h.includes('交付') || h.includes('drop')) headerMap.dropPoint = index;
+  });
+
+  return {
+    id: values[headerMap.id] || `YH${Date.now()}${Math.random().toString(36).substr(2, 6)}`,
+    warehouse: values[headerMap.warehouse] || "长沙雨花2B仓",
+    owner: values[headerMap.owner] || "未知货主",
+    recipient: values[headerMap.recipient] || "",
+    phone: values[headerMap.phone] || "",
+    address: values[headerMap.address] || "",
+    area: values[headerMap.area] || Object.keys(areas)[0],
+    temperature: values[headerMap.temperature] || "常温",
+    weight: parseFloat(values[headerMap.weight]) || 0,
+    goodsType: values[headerMap.goodsType] || "其他",
+    pieces: parseInt(values[headerMap.pieces]) || 1,
+    timeWindow: values[headerMap.timeWindow] || "今日配送",
+    dropPoint: values[headerMap.dropPoint] || "门店",
+    priority: "标准",
+    status: "pending",
+    routeId: null,
+    sequence: null
+  };
 }
 
 function parseCSVLine(line) {
