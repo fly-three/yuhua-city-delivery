@@ -277,11 +277,6 @@
     <div id="printArea" aria-hidden="true"></div>
     <div id="toast" role="status" aria-live="polite"></div>
 
-    <script type="module">
-      // 确保只在浏览器环境加载
-      if (typeof window !== 'undefined') {
-        import('./app.js');
-      }
-    </script>
+    <script src="./app.js"></script>
   </body>
 </html>
