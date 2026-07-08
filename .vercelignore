@@ -1,5 +1,0 @@
-server.mjs
-node_modules
-.git
-.server.log
-.server.err.log
