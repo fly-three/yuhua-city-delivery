@@ -418,12 +418,34 @@ select:focus {
   overflow: hidden;
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.table-wrap th:nth-child(1) { width: 12%; } /* 运单 */
+.table-wrap th:nth-child(2) { width: 10%; } /* 货主 */
+.table-wrap th:nth-child(3) { width: 10%; } /* 收件人 */
+.table-wrap th:nth-child(4) { width: 28%; } /* 地址 */
+.table-wrap th:nth-child(5) { width: 8%; } /* 温层 */
+.table-wrap th:nth-child(6) { width: 8%; } /* 重量 */
+.table-wrap th:nth-child(7) { width: 7%; } /* 件数 */
+.table-wrap th:nth-child(8) { width: 10%; } /* 路线 */
+.table-wrap th:nth-child(9) { width: 7%; } /* 状态 */
+
 th,
 td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 th {
