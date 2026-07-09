@@ -285,9 +285,41 @@
       </form>
     </dialog>
 
+    <dialog id="importDialog">
+      <div class="dialog-body">
+        <div class="dialog-head">
+          <h2>导入进度</h2>
+          <button class="icon-btn" id="closeImportDialog" type="button" title="关闭">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div id="importProgress">
+          <div class="import-stats">
+            <div class="import-stat success">
+              <strong id="successCount">0</strong>
+              <span>成功</span>
+            </div>
+            <div class="import-stat failed">
+              <strong id="failedCount">0</strong>
+              <span>失败</span>
+            </div>
+            <div class="import-stat total">
+              <strong id="totalCount">0</strong>
+              <span>总数</span>
+            </div>
+          </div>
+          <div id="errorList" class="error-list"></div>
+        </div>
+        <div class="dialog-actions">
+          <button class="primary" id="confirmImportBtn" type="button">确认</button>
+        </div>
+      </div>
+    </dialog>
+
     <div id="printArea" aria-hidden="true"></div>
     <div id="toast" role="status" aria-live="polite"></div>
 
+    <script src="./xlsx.full.min.js"></script>
     <script src="./main.js"></script>
   </body>
 </html>

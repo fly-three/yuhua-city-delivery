@@ -141,7 +141,11 @@ function loadState() {
 
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "");
-    if (saved?.orders?.length) return saved;
+    if (saved?.orders?.length) {
+      // 清理旧的 historyOrders 字段
+      delete saved.historyOrders;
+      return saved;
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -212,7 +216,14 @@ function init() {
     "fieldForm",
     "customFieldList",
     "areaSelect",
-    "temperatureSelect"
+    "temperatureSelect",
+    "importDialog",
+    "successCount",
+    "failedCount",
+    "totalCount",
+    "errorList",
+    "closeImportDialog",
+    "confirmImportBtn"
   ].forEach((id) => {
     els[id] = $(id);
   });
@@ -221,9 +232,11 @@ function init() {
   $("bulkDispatchBtn").addEventListener("click", () => autoDispatch(filteredOrders()));
   $("exportBtn").addEventListener("click", exportCsv);
   $("importBtn").addEventListener("click", () => {
-    const importServiceUrl = 'https://smart-import-theta.vercel.app/';
-    window.open(importServiceUrl, '_blank');
-    showToast("已打开智能导入服务，完成后数据将自动同步");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xlsx,.xls";
+    input.onchange = handleFileImport;
+    input.click();
   });
   $("resetBtn").addEventListener("click", resetDemo);
   $("clearFiltersBtn").addEventListener("click", clearFilters);
@@ -263,64 +276,141 @@ function init() {
 
   els.orderForm.addEventListener("submit", handleAddOrder);
   els.fieldForm.addEventListener("submit", handleAddField);
+  els.closeImportDialog.addEventListener("click", () => els.importDialog.close());
+  els.confirmImportBtn.addEventListener("click", () => els.importDialog.close());
 
   renderSelectOptions();
   render();
-
-  // 监听来自外部智能导入服务的消息
-  window.addEventListener('message', handleImportMessage, false);
 }
 
-function handleImportMessage(event) {
-  // 验证消息来源
-  if (event.origin !== 'https://smart-import-theta.vercel.app') {
-    return;
-  }
+function handleFileImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
-  try {
-    const message = event.data;
+  showToast("正在读取文件...");
 
-    if (message.type === 'import-success' && message.data) {
-      // 接收从外部服务返回的解析数据
-      const importedOrders = message.data.map((row, index) => {
-        return mapSmartImportToOrder(row, index);
-      }).filter(order => order !== null);
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
 
-      if (importedOrders.length === 0) {
-        showToast("未找到有效的运单数据", "error");
+      if (jsonData.length === 0) {
+        showToast("文件中没有数据", "error");
         return;
       }
 
-      // 添加到运单池
-      state.orders.push(...importedOrders);
-      saveState();
-      render();
-
-      const skipped = message.data.length - importedOrders.length;
-      const messageText = skipped > 0
-        ? `成功导入 ${importedOrders.length} 条运单，跳过 ${skipped} 条无效数据`
-        : `成功导入 ${importedOrders.length} 条运单`;
-      showToast(messageText);
+      processImportedData(jsonData, file.name);
+    } catch (error) {
+      console.error("解析文件错误:", error);
+      showToast("文件解析失败: " + error.message, "error");
     }
-  } catch (error) {
-    console.error("处理导入消息错误:", error);
+  };
+
+  reader.onerror = () => {
+    showToast("文件读取失败", "error");
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function processImportedData(jsonData, fileName) {
+  const results = { success: 0, failed: 0, errors: [], duplicates: 0 };
+  const existingOrderIds = new Set(state.orders.map(o => o.id));
+
+  const importedOrders = jsonData.map((row, index) => {
+    try {
+      const order = mapSmartImportToOrder(row, index);
+
+      // 运单号重复性校验
+      if (existingOrderIds.has(order.id)) {
+        results.failed++;
+        results.duplicates++;
+        results.errors.push(`第 ${index + 2} 行: 运单号 ${order.id} 已存在`);
+        return null;
+      }
+
+      existingOrderIds.add(order.id);
+      results.success++;
+      return order;
+    } catch (error) {
+      results.failed++;
+      results.errors.push(`第 ${index + 2} 行: ${error.message}`);
+      return null;
+    }
+  }).filter(order => order !== null);
+
+  // 显示导入结果对话框
+  els.successCount.textContent = results.success;
+  els.failedCount.textContent = results.failed;
+  els.totalCount.textContent = jsonData.length;
+
+  if (results.errors.length > 0) {
+    els.errorList.innerHTML = results.errors
+      .slice(0, 20)
+      .map(err => `<div class="error-item">${escapeHtml(err)}</div>`)
+      .join("");
+    if (results.errors.length > 20) {
+      els.errorList.innerHTML += `<div class="error-item">...还有 ${results.errors.length - 20} 条错误未显示</div>`;
+    }
+  } else {
+    els.errorList.innerHTML = "";
   }
+
+  els.importDialog.showModal();
+
+  if (importedOrders.length === 0) {
+    showToast("未找到有效的运单数据", "error");
+    return;
+  }
+
+  state.orders.push(...importedOrders);
+  saveState();
+  render();
+
+  let message = `成功导入 ${results.success} 条`;
+  if (results.duplicates > 0) {
+    message += `, ${results.duplicates} 条重复`;
+  }
+  if (results.failed - results.duplicates > 0) {
+    message += `, ${results.failed - results.duplicates} 条格式错误`;
+  }
+  showToast(message);
 }
 
 function mapSmartImportToOrder(row, index) {
   try {
-    // 智能映射字段 - 适配智能导入服务返回的数据结构
-    const recipient = row.recipient || row['收件人'] || row.name || row['姓名'] || '';
-    const address = row.address || row['地址'] || row['收货地址'] || '';
-    const phone = row.phone || row['电话'] || row['手机'] || row.mobile || '';
+    // 智能映射字段 - 支持导出格式和自定义格式
+    const warehouse = row['仓库'] || row.warehouse || '';
+    const owner = row['货主'] || row.owner || row.company || row['公司'] || '';
+    const recipient = row['收件人'] || row.recipient || row.name || row['姓名'] || '';
+    const address = row['地址'] || row.address || row['收货地址'] || '';
+    const phone = row['电话'] || row.phone || row['手机'] || row.mobile || '';
+    const temperature = row['温层'] || row.temperature || row.temp || '';
+    const weight = parseFloat(row['重量'] || row.weight || 0);
+    const goodsType = row['物品类型'] || row.goodsType || row.goods || row['商品'] || '';
+    const pieces = parseInt(row['件数'] || row.pieces || row.quantity || 0);
 
-    // 必填字段验证
-    if (!recipient || !address) {
-      return null;
+    // 必填字段验证(8个)
+    const missingFields = [];
+    if (!warehouse) missingFields.push('仓库');
+    if (!owner) missingFields.push('货主');
+    if (!recipient) missingFields.push('收件人');
+    if (!address) missingFields.push('收件地址');
+    if (!temperature) missingFields.push('温层');
+    if (!weight || weight <= 0) missingFields.push('重量');
+    if (!goodsType) missingFields.push('物品类型');
+    if (!pieces || pieces <= 0) missingFields.push('件数');
+
+    if (missingFields.length > 0) {
+      throw new Error(`缺少必填字段: ${missingFields.join('、')}`);
     }
 
     // 提取或推断片区
-    let area = row.area || row['片区'] || row['区域'] || '';
+    let area = row['片区'] || row.area || row['区域'] || '';
     if (!area || !areas[area]) {
       // 尝试从地址中提取片区
       for (const areaName of Object.keys(areas)) {
@@ -329,34 +419,46 @@ function mapSmartImportToOrder(row, index) {
           break;
         }
       }
-      // 如果还是没有找到，使用默认片区
+      // 如果还是没有找到,使用默认片区
       if (!area || !areas[area]) {
         area = Object.keys(areas)[0];
       }
     }
 
+    // 支持状态反向映射
+    let status = 'pending';
+    const statusText = row['状态'] || row.status || '';
+    if (statusText) {
+      const statusEntry = Object.entries(statusLabels).find(([key, label]) => label === statusText);
+      if (statusEntry) {
+        status = statusEntry[0];
+      }
+    }
+
+    const orderId = row['运单号'] || row.id || `YH${Date.now()}${index}${Math.random().toString(36).substr(2, 4)}`;
+
     return {
-      id: row.id || row['运单号'] || `YH${Date.now()}${index}${Math.random().toString(36).substr(2, 4)}`,
-      warehouse: row.warehouse || row['仓库'] || "长沙雨花2B仓",
-      owner: row.owner || row['货主'] || row.company || row['公司'] || "未知货主",
+      id: orderId,
+      warehouse: warehouse,
+      owner: owner,
       recipient: recipient,
       phone: phone,
       address: address,
       area: area,
-      temperature: (row.temperature || row['温层'] || row.temp || "常温"),
-      weight: parseFloat(row.weight || row['重量'] || 0),
-      goodsType: row.goodsType || row['物品类型'] || row.goods || row['商品'] || "其他",
-      pieces: parseInt(row.pieces || row['件数'] || row.quantity || 1),
-      timeWindow: row.timeWindow || row['时效窗'] || row.time || "今日配送",
-      dropPoint: row.dropPoint || row['卸货点'] || row.delivery || "门店",
-      priority: row.priority || row['优先级'] || "标准",
-      status: "pending",
-      routeId: null,
-      sequence: null
+      temperature: temperature,
+      weight: weight,
+      goodsType: goodsType,
+      pieces: pieces,
+      timeWindow: row['时效窗'] || row.timeWindow || row.time || "今日配送",
+      dropPoint: row['卸货点'] || row.dropPoint || row.delivery || "门店",
+      priority: row['优先级'] || row.priority || "标准",
+      status: status,
+      routeId: row['路线'] || row.routeId || null,
+      sequence: row['序号'] ? parseInt(row['序号']) : (row.sequence ? parseInt(row.sequence) : null),
+      custom: {}
     };
   } catch (error) {
-    console.error("映射运单数据错误:", error, row);
-    return null;
+    throw error;
   }
 }
 
@@ -472,7 +574,7 @@ function renderMap() {
     .map(
       ([name, point]) => `
         <rect class="map-area" x="${point.x - 42}" y="${point.y - 20}" width="84" height="40" rx="8"></rect>
-        <text class="map-label" x="${point.x}" y="${point.y - 26}" text-anchor="middle">${name}</text>
+        <text class="map-label" x="${point.x}" y="${point.y + 5}" text-anchor="middle" dominant-baseline="middle" style="paint-order: stroke; stroke: #f8faf7; stroke-width: 3px; stroke-linejoin: round;">${name}</text>
       `
     )
     .join("");
@@ -480,11 +582,10 @@ function renderMap() {
   svg.innerHTML = `
     <rect x="18" y="22" width="724" height="256" rx="8" fill="#fcfdfb" stroke="#e0e6de"></rect>
     <path d="M80 55H690M80 155H690M80 255H690M210 38V268M380 38V268M550 38V268" stroke="#e8eee7" stroke-width="1"></path>
-    ${areaFragments}
-    <circle class="warehouse-node" cx="72" cy="154" r="18"></circle>
-    <text x="72" y="158" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">仓</text>
-    <text class="map-label" x="72" y="128" text-anchor="middle">雨花2B仓</text>
     ${routeFragments}
+    ${areaFragments}
+    <rect class="map-area" x="30" y="134" width="84" height="40" rx="8"></rect>
+    <text class="map-label" x="72" y="159" text-anchor="middle" dominant-baseline="middle" style="paint-order: stroke; stroke: #f8faf7; stroke-width: 3px; stroke-linejoin: round;">雨花2B仓</text>
   `;
 
   els.routeMapSub.textContent = state.routes.length
@@ -847,19 +948,27 @@ function exportCsv() {
     item.weight,
     item.goodsType,
     item.pieces,
-    item.routeId,
-    item.sequence,
+    item.routeId || "",
+    item.sequence || "",
     statusLabels[item.status],
     item.timeWindow,
     item.dropPoint
   ]);
-  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `雨花城配交接单-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  const colWidths = [
+    { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 10 },
+    { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 8 },
+    { wch: 8 }, { wch: 12 }, { wch: 6 }, { wch: 8 },
+    { wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 12 }
+  ];
+  ws['!cols'] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, "交接单");
+  XLSX.writeFile(wb, `雨花城配交接单-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  showToast("已导出 Excel 文件");
 }
 
 function printSelectedRoute() {
